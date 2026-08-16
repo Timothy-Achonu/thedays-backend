@@ -1,0 +1,22 @@
+continue:
+In progress ⏳
+Urgent ⚠️
+Not Urgent 🙂
+Done ✅
+serlzo public repo path "C:\Users\TIM\Desktop\code\current\serlzo-public"
+codex usage: https://chatgpt.com/codex/cloud/settings/analytics#usage
+swagger api docs: https://xxx-dev.serlzo.com/api
+public api docs: https://xxx-dev.serlzo.com/public/docs/
+homie repo: "C:\Users\TIM\Desktop\code\current\homie-frontend"
+create cloudfare tunnel: npx cloudflared tunnel --url http://localhost:3000
+command to list cursor terminal chat history with agents: cursor-agent ls
+Cursor usage: https://cursor.com/dashboard/spending
+Powershel switch to current dir: cd C:\Users\TIM\Desktop\code\current\thedays-frontend
+
+
+
+
+
+
+
+//TODOS

@@ -1,0 +1,20 @@
+
+//
+1. "The precise representation of calendar dates should be finalized during implementation to avoid timezone-related errors."
+What does this mean?
+
+2. Explain clearly and in simple language why you suggested a monorepo and also point out the potential disadvantages of a monorepo so that I can weigh my options.
+
+
+//
+1. "We do not care whether they checked it at:
+
+8:00 AM
+3:37 PM
+11:58 PM"
+Why does the check time matter at all? it shouldn't matter.
+
+2. "But JavaScript may interpret that date in UTC. Once it converts between UTC and the user's timezone, the calendar date can shift."
+What's UTC?
+
+
