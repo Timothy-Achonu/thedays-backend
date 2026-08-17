@@ -18,3 +18,57 @@ Why does the check time matter at all? it shouldn't matter.
 What's UTC?
 
 
+//
+1. " Open .env and set SESSION_SECRET to at least 32 random characters. That secret is used to HMAC session tokens. If
+  it is short or missing, startup fails with Invalid environment configuration."
+  What's HMAC?
+
+2. "Rules the API actually enforces:
+
+  ┌──────────┬─────────────────────────────────────────────────────────┐
+  │ Field    │ Rule                                                    │
+  ├──────────┼─────────────────────────────────────────────────────────┤
+  │ name     │ 1–100 characters after trim                             │
+  ├──────────┼─────────────────────────────────────────────────────────┤
+  │ email    │ valid email, max 320, stored lowercase                  │
+  ├──────────┼─────────────────────────────────────────────────────────┤
+  │ password │ 8–128 characters                                        │
+  ├──────────┼─────────────────────────────────────────────────────────┤
+  │ timezone │ optional; IANA name like Europe/London; defaults to UTC │
+  └──────────┴─────────────────────────────────────────────────────────┘"
+
+What does "IANA" mean?
+
+
+3. I'm getting an error: "C:\Users\TIM\Pictures\Screenshots\Screenshot (480).png"
+
+
+//
+1. "The request reached the server. Validation failed on purpose.
+
+  What the response means
+
+  {
+    "error": {
+      "code": "VALIDATION_ERROR",
+      "message": "Request validation failed",
+      "details": {
+        "formErrors": [],
+        "fieldErrors": {
+          "name": [
+            "Invalid input: expected string, received undefined"
+          ]
+        }
+      }
+    }
+  }"
+But is this error returned clear enough? Will this same error be returned if it was a browser that made this request? If yes, please can you create a plan to improve on the error response in the app, so that it's clear to the client why the request was bad. 
+
+
+//
+2. "Small Postman note
+
+  The collection item is named GET Register while the actual method is POST. The method is what the server sees; the label is only Postman’s
+  name. Rename it to POST Register so it does not confuse you later. Register must stay POST: GET cannot carry a JSON body this way, and the
+  route is not defined as GET."
+Explain in clear detail how I should rename it to GET Register?
