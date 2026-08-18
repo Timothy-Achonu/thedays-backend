@@ -23,3 +23,8 @@ resume session: agent --resume=b813241d-0cbd-437c-8f52-a6f27efda5fd , read last 
 //TODOS
 *Test that this codebase is working... you should be able to signin and see the user in the DB, test google auth, probably setup somethings on postgress and prisma or more. 
 *Create a plan to setup this frontend codebase (C:\Users\TIM\Desktop\code\current\thedays-frontend) taking inspiration from the PRD. Please make sure it's optimal. Copy patterns from "C:\Users\TIM\Desktop\code\current\homie-frontend"
+
+
+*Implementing sending verification code to the user's email during register
+
+*Maybe expose an admin endpoint to fetch all users.
