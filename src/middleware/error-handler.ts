@@ -1,8 +1,9 @@
 import type { ErrorRequestHandler } from "express";
-import { ZodError, z } from "zod";
+import { ZodError } from "zod";
 
 import { env } from "../config/env.js";
 import { AppError } from "../utils/app-error.js";
+import { formatZodError } from "../utils/format-zod-error.js";
 
 export const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
   if (error instanceof ZodError) {
@@ -10,7 +11,7 @@ export const errorHandler: ErrorRequestHandler = (error, _request, response, _ne
       error: {
         code: "VALIDATION_ERROR",
         message: "Request validation failed",
-        details: z.flattenError(error),
+        details: formatZodError(error),
       },
     });
     return;

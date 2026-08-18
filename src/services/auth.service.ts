@@ -1,13 +1,14 @@
 import { prisma } from "../db/prisma.js";
 import type { AuthenticatedUser } from "../types/auth.js";
 import { AppError } from "../utils/app-error.js";
+import { getRegistrationConflictField } from "../utils/get-registration-conflict-field.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { createSessionExpiry, createSessionToken, hashSessionToken } from "../utils/session.js";
 import type { LoginInput, RegisterInput } from "../validators/auth.schemas.js";
 
 const publicUserSelect = {
   id: true,
-  name: true,
+  username: true,
   email: true,
   timezone: true,
   createdAt: true,
@@ -31,6 +32,20 @@ function isUniqueConstraintError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
 }
 
+function throwRegistrationConflictError(error: unknown): never {
+  const conflictField = getRegistrationConflictField(error);
+
+  if (conflictField === "username") {
+    throw new AppError(409, "USERNAME_TAKEN", "This username is already taken");
+  }
+
+  if (conflictField === "email") {
+    throw new AppError(409, "EMAIL_ALREADY_REGISTERED", "An account with this email already exists");
+  }
+
+  throw new AppError(409, "REGISTRATION_CONFLICT", "An account with these details already exists");
+}
+
 function newSessionCredentials(): { sessionToken: string; tokenHash: string; expiresAt: Date } {
   const sessionToken = createSessionToken();
 
@@ -49,7 +64,7 @@ export async function registerUser(input: RegisterInput): Promise<Authentication
     const user = await prisma.$transaction(async (transaction) => {
       const createdUser = await transaction.user.create({
         data: {
-          name: input.name,
+          username: input.username,
           email: input.email,
           passwordHash,
           timezone: input.timezone,
@@ -71,7 +86,7 @@ export async function registerUser(input: RegisterInput): Promise<Authentication
     return { user, sessionToken: session.sessionToken, expiresAt: session.expiresAt };
   } catch (error) {
     if (isUniqueConstraintError(error)) {
-      throw new AppError(409, "EMAIL_ALREADY_REGISTERED", "An account with this email already exists");
+      throwRegistrationConflictError(error);
     }
 
     throw error;
@@ -100,7 +115,7 @@ export async function loginUser(input: LoginInput): Promise<AuthenticationResult
 
   const user: AuthenticatedUser = {
     id: userWithPassword.id,
-    name: userWithPassword.name,
+    username: userWithPassword.username,
     email: userWithPassword.email,
     timezone: userWithPassword.timezone,
     createdAt: userWithPassword.createdAt,

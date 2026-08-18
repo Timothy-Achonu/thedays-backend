@@ -28,7 +28,7 @@ Register and login set an opaque `thedays_session` HttpOnly cookie. Browser requ
 | `POST` | `/api/auth/logout` | Revoke the current session and clear its cookie |
 | `GET` | `/api/auth/me` | Return the current authenticated user |
 
-Registration accepts `name`, `email`, `password`, and an optional IANA `timezone` (defaults to `UTC`). Login accepts `email` and `password`.
+Registration accepts `username`, `email`, `password`, and an optional IANA `timezone` (defaults to `UTC`). Usernames must be 3–30 characters, start with a letter, and contain only lowercase letters, numbers, and underscores. Login accepts `email` and `password`.
 
 The default cookie policy is `SameSite=Lax`. If the frontend and API use unrelated sites, set `COOKIE_SAME_SITE=none` in production and serve both over HTTPS. Unsafe browser requests are also restricted to `FRONTEND_URL`.
 

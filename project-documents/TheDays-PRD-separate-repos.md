@@ -250,7 +250,7 @@ Users must be able to:
 
 Required registration fields:
 
-* Name
+* Username
 * Email
 * Password
 
@@ -259,6 +259,8 @@ or
 Google Auth
 
 The email address must be unique.
+
+The username must be unique. Usernames are normalized to lowercase, must be 3–30 characters, start with a letter, and contain only lowercase letters, numbers, and underscores. Reserved usernames (such as `admin` and `support`) are rejected.
 
 Passwords must never be stored in plain text.
 
@@ -290,7 +292,7 @@ The user entity should contain:
 User
 
 id
-name
+username
 email
 passwordHash
 timezone
@@ -303,7 +305,7 @@ Example:
 ```ts
 {
   id: "user_123",
-  name: "Example User",
+  username: "example_user",
   email: "user@example.com",
   passwordHash: "...",
   timezone: "Africa/Lagos",
@@ -1185,7 +1187,7 @@ A suitable initial Prisma schema could resemble:
 ```prisma
 model User {
   id           String    @id @default(cuid())
-  name         String
+  username     String    @unique @db.VarChar(30)
   email        String    @unique
   passwordHash String
   timezone     String
@@ -1321,7 +1323,7 @@ Example body:
 
 ```json
 {
-  "name": "Example User",
+  "username": "example_user",
   "email": "user@example.com",
   "password": "..."
 }
@@ -1574,7 +1576,7 @@ User opens application
         ↓
 Selects Create Account
         ↓
-Enters name, email, and password
+Enters username, email, and password
         ↓
 Account is created
         ↓
