@@ -1,0 +1,296 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { AppError } from "../src/utils/app-error.js";
+import { hashOtp, OTP_MAX_ATTEMPTS } from "../src/utils/otp.js";
+import { hashPassword } from "../src/utils/password.js";
+
+const { prismaMock, sendVerificationOtp, EmailDeliveryError } = vi.hoisted(() => {
+  class EmailDeliveryError extends Error {
+    constructor() {
+      super("Failed to send verification email");
+      this.name = "EmailDeliveryError";
+    }
+  }
+
+  return {
+    EmailDeliveryError,
+    sendVerificationOtp: vi.fn(),
+    prismaMock: {
+      $transaction: vi.fn(),
+      user: {
+        findUnique: vi.fn(),
+        update: vi.fn(),
+        create: vi.fn(),
+        delete: vi.fn(),
+      },
+      emailVerification: {
+        upsert: vi.fn(),
+        update: vi.fn(),
+        deleteMany: vi.fn(),
+      },
+      session: {
+        create: vi.fn(),
+      },
+    },
+  };
+});
+
+vi.mock("../src/db/prisma.js", () => ({
+  prisma: prismaMock,
+}));
+
+vi.mock("../src/services/email.service.js", () => ({
+  sendVerificationOtp,
+  EmailDeliveryError,
+}));
+
+import {
+  loginUser,
+  registerUser,
+  resendVerificationEmail,
+  verifyUserEmail,
+} from "../src/services/auth.service.js";
+
+const now = new Date();
+
+function unverifiedUser(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "user_1",
+    username: "example_user",
+    email: "user@example.com",
+    passwordHash: "hash",
+    timezone: "UTC",
+    emailVerifiedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    emailVerification: null,
+    ...overrides,
+  };
+}
+
+describe("auth service email verification", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.$transaction.mockImplementation((callback: (tx: typeof prismaMock) => unknown) =>
+      Promise.resolve(callback(prismaMock)),
+    );
+    sendVerificationOtp.mockResolvedValue(undefined);
+  });
+
+  it("registers an unverified user, emails an OTP, and does not create a session", async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    prismaMock.user.create.mockResolvedValue({ id: "user_1", email: "user@example.com" });
+    prismaMock.emailVerification.upsert.mockResolvedValue({});
+    prismaMock.emailVerification.update.mockResolvedValue({});
+
+    const result = await registerUser({
+      username: "example_user",
+      email: "user@example.com",
+      password: "password123",
+      timezone: "UTC",
+    });
+
+    expect(result).toEqual({ email: "user@example.com" });
+    expect(prismaMock.session.create).not.toHaveBeenCalled();
+    expect(sendVerificationOtp).toHaveBeenCalledOnce();
+    expect(sendVerificationOtp.mock.calls[0]?.[0]).toBe("user@example.com");
+    expect(sendVerificationOtp.mock.calls[0]?.[1]).toMatch(/^\d{6}$/);
+  });
+
+  it("returns 503 without a session when Gmail sending fails after the user is created", async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    prismaMock.user.create.mockResolvedValue({ id: "user_1", email: "user@example.com" });
+    prismaMock.emailVerification.upsert.mockResolvedValue({});
+    sendVerificationOtp.mockRejectedValue(new EmailDeliveryError());
+
+    const error = await registerUser({
+      username: "example_user",
+      email: "user@example.com",
+      password: "password123",
+      timezone: "UTC",
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(AppError);
+    expect(error).toMatchObject({
+      statusCode: 503,
+      code: "EMAIL_DELIVERY_FAILED",
+      details: { email: "user@example.com" },
+    });
+    expect(prismaMock.session.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a verified email and restarts an unverified one", async () => {
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce({ ...unverifiedUser(), emailVerifiedAt: now })
+      .mockResolvedValueOnce(null);
+
+    const verifiedConflict = await registerUser({
+      username: "example_user",
+      email: "user@example.com",
+      password: "password123",
+      timezone: "UTC",
+    }).catch((caught: unknown) => caught);
+
+    expect(verifiedConflict).toMatchObject({ statusCode: 409, code: "EMAIL_ALREADY_REGISTERED" });
+
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce(unverifiedUser())
+      .mockResolvedValueOnce(unverifiedUser());
+    prismaMock.user.update.mockResolvedValue({});
+    prismaMock.emailVerification.upsert.mockResolvedValue({});
+    prismaMock.emailVerification.update.mockResolvedValue({});
+
+    const restarted = await registerUser({
+      username: "example_user",
+      email: "user@example.com",
+      password: "password123",
+      timezone: "UTC",
+    });
+
+    expect(restarted).toEqual({ email: "user@example.com" });
+    expect(prismaMock.user.update).toHaveBeenCalledOnce();
+    expect(sendVerificationOtp).toHaveBeenCalledOnce();
+  });
+
+  it("skips sending when an unverified user re-registers inside the cooldown window", async () => {
+    prismaMock.user.findUnique.mockResolvedValue(
+      unverifiedUser({
+        emailVerification: {
+          lastSentAt: new Date(),
+          codeHash: "x",
+          expiresAt: new Date(),
+          attemptCount: 0,
+          id: "ev_1",
+        },
+      }),
+    );
+    prismaMock.user.update.mockResolvedValue({});
+
+    await registerUser({
+      username: "example_user",
+      email: "user@example.com",
+      password: "password123",
+      timezone: "UTC",
+    });
+
+    expect(prismaMock.emailVerification.upsert).not.toHaveBeenCalled();
+    expect(sendVerificationOtp).not.toHaveBeenCalled();
+  });
+
+  it("deletes a stale unverified username occupant so a new registration can proceed", async () => {
+    const staleOccupant = unverifiedUser({
+      id: "user_old",
+      username: "example_user",
+      email: "old@example.com",
+      createdAt: new Date(now.getTime() - 25 * 60 * 60 * 1_000),
+    });
+    prismaMock.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(staleOccupant);
+    prismaMock.user.delete.mockResolvedValue({});
+    prismaMock.user.create.mockResolvedValue({ id: "user_1", email: "user@example.com" });
+    prismaMock.emailVerification.upsert.mockResolvedValue({});
+    prismaMock.emailVerification.update.mockResolvedValue({});
+
+    await registerUser({
+      username: "example_user",
+      email: "user@example.com",
+      password: "password123",
+      timezone: "UTC",
+    });
+
+    expect(prismaMock.user.delete).toHaveBeenCalledWith({ where: { id: "user_old" } });
+    expect(prismaMock.user.create).toHaveBeenCalledOnce();
+  });
+
+  it("rejects login of an unverified user after the password check", async () => {
+    const passwordHash = await hashPassword("password123");
+    prismaMock.user.findUnique.mockResolvedValue(unverifiedUser({ passwordHash }));
+
+    const error = await loginUser({
+      email: "user@example.com",
+      password: "password123",
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ statusCode: 403, code: "EMAIL_NOT_VERIFIED" });
+    expect(prismaMock.session.create).not.toHaveBeenCalled();
+  });
+
+  it("issues a session when a valid OTP is submitted and refuses reuse", async () => {
+    const otp = "123456";
+    const user = unverifiedUser({
+      emailVerification: {
+        id: "ev_1",
+        userId: "user_1",
+        codeHash: hashOtp(otp),
+        expiresAt: new Date(now.getTime() + 60_000),
+        attemptCount: 0,
+        lastSentAt: now,
+      },
+    });
+    prismaMock.user.findUnique.mockResolvedValue(user);
+    prismaMock.emailVerification.deleteMany.mockResolvedValue({ count: 1 });
+    prismaMock.user.update.mockResolvedValue({
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      timezone: user.timezone,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    });
+    prismaMock.session.create.mockResolvedValue({});
+
+    const result = await verifyUserEmail({ email: "user@example.com", code: otp });
+
+    expect(result.user.email).toBe("user@example.com");
+    expect(result.sessionToken).toEqual(expect.any(String));
+    expect(prismaMock.emailVerification.deleteMany).toHaveBeenCalledWith({ where: { id: "ev_1" } });
+
+    prismaMock.user.findUnique.mockResolvedValue({ ...user, emailVerification: null, emailVerifiedAt: now });
+
+    const reuseError = await verifyUserEmail({ email: "user@example.com", code: otp }).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(reuseError).toMatchObject({ statusCode: 400, code: "INVALID_OR_EXPIRED_CODE" });
+  });
+
+  it("locks the code after too many failed attempts", async () => {
+    const user = unverifiedUser({
+      emailVerification: {
+        id: "ev_1",
+        userId: "user_1",
+        codeHash: hashOtp("123456"),
+        expiresAt: new Date(now.getTime() + 60_000),
+        attemptCount: OTP_MAX_ATTEMPTS - 1,
+        lastSentAt: now,
+      },
+    });
+    prismaMock.user.findUnique.mockResolvedValue(user);
+    prismaMock.emailVerification.deleteMany.mockResolvedValue({ count: 1 });
+
+    const error = await verifyUserEmail({ email: "user@example.com", code: "000000" }).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({ statusCode: 400, code: "INVALID_OR_EXPIRED_CODE" });
+    expect(prismaMock.emailVerification.deleteMany).toHaveBeenCalledWith({ where: { id: "ev_1" } });
+  });
+
+  it("does not reveal whether an email exists when resending, including cooldown and send failure", async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    await expect(resendVerificationEmail({ email: "missing@example.com" })).resolves.toBeUndefined();
+    expect(sendVerificationOtp).not.toHaveBeenCalled();
+
+    prismaMock.user.findUnique.mockResolvedValue(
+      unverifiedUser({
+        emailVerification: { lastSentAt: now, id: "ev_1", codeHash: "x", expiresAt: now, attemptCount: 0 },
+      }),
+    );
+    await expect(resendVerificationEmail({ email: "user@example.com" })).resolves.toBeUndefined();
+    expect(sendVerificationOtp).not.toHaveBeenCalled();
+
+    prismaMock.user.findUnique.mockResolvedValue(unverifiedUser());
+    prismaMock.emailVerification.upsert.mockResolvedValue({});
+    sendVerificationOtp.mockRejectedValue(new EmailDeliveryError());
+    await expect(resendVerificationEmail({ email: "user@example.com" })).resolves.toBeUndefined();
+  });
+});

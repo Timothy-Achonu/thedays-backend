@@ -77,5 +77,25 @@ export const loginBodySchema = z
   })
   .strict();
 
+const verificationCodeSchema = z
+  .string({ error: "Verification code is required" })
+  .trim()
+  .regex(/^\d{6}$/, { error: "Verification code must be 6 digits" });
+
+export const verifyEmailBodySchema = z
+  .object({
+    email: emailSchema,
+    code: verificationCodeSchema,
+  })
+  .strict();
+
+export const resendVerificationBodySchema = z
+  .object({
+    email: emailSchema,
+  })
+  .strict();
+
 export type RegisterInput = z.infer<typeof registerBodySchema>;
 export type LoginInput = z.infer<typeof loginBodySchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailBodySchema>;
+export type ResendVerificationInput = z.infer<typeof resendVerificationBodySchema>;

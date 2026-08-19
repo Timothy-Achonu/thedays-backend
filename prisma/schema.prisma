@@ -8,14 +8,16 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  username     String    @unique @db.VarChar(30)
-  email        String    @unique @db.VarChar(320)
-  passwordHash String
-  timezone     String    @default("UTC") @db.VarChar(100)
-  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
-  sessions     Session[]
+  id                String             @id @default(cuid())
+  username          String             @unique @db.VarChar(30)
+  email             String             @unique @db.VarChar(320)
+  passwordHash      String
+  timezone          String             @default("UTC") @db.VarChar(100)
+  emailVerifiedAt   DateTime?          @db.Timestamptz(3)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+  sessions          Session[]
+  emailVerification EmailVerification?
 
   @@map("users")
 }
@@ -31,4 +33,17 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+model EmailVerification {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  codeHash     String    @db.Char(64)
+  expiresAt    DateTime  @db.Timestamptz(3)
+  attemptCount Int       @default(0)
+  lastSentAt   DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verifications")
 }

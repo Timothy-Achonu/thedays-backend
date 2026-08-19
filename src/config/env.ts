@@ -14,6 +14,11 @@ const environmentSchema = z
     DATABASE_URL: z.string().min(1),
     FRONTEND_URL: z.url().transform((value) => new URL(value).origin),
     SESSION_SECRET: z.string().min(32),
+    EMAIL_USER: z.email(),
+    EMAIL_APP_PASSWORD: z
+      .string()
+      .transform((value) => value.replaceAll(" ", ""))
+      .pipe(z.string().min(16, { error: "EMAIL_APP_PASSWORD must be at least 16 characters" })),
     SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
     COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax"),
     TRUST_PROXY: booleanStringSchema,

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { loginBodySchema, registerBodySchema } from "../src/validators/auth.schemas.js";
+import {
+  loginBodySchema,
+  registerBodySchema,
+  resendVerificationBodySchema,
+  verifyEmailBodySchema,
+} from "../src/validators/auth.schemas.js";
 
 describe("authentication request validation", () => {
   it("normalizes registration fields and defaults the timezone", () => {
@@ -130,5 +135,32 @@ describe("authentication request validation", () => {
 
     expect(shortPassword.error.issues[0]?.message).toBe("Password must be at least 8 characters");
     expect(longPassword.error.issues[0]?.message).toBe("Password must be at most 128 characters");
+  });
+
+  it("accepts a 6-digit verification code and normalizes the email", () => {
+    const result = verifyEmailBodySchema.parse({
+      email: "  USER@Example.COM ",
+      code: "123456",
+    });
+
+    expect(result).toEqual({
+      email: "user@example.com",
+      code: "123456",
+    });
+  });
+
+  it("rejects verification codes that are not 6 digits", () => {
+    const result = verifyEmailBodySchema.safeParse({
+      email: "user@example.com",
+      code: "12345",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("requires an email to resend verification", () => {
+    const result = resendVerificationBodySchema.safeParse({});
+
+    expect(result.success).toBe(false);
   });
 });
