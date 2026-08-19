@@ -6,4 +6,5 @@ dist/
 coverage/
 src/generated/prisma/
 *.log
+project-documents/
 

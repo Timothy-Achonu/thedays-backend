@@ -2,7 +2,7 @@
 
 All automated agents (and humans using agent-assisted workflows) should treat this file as the default playbook for how to work in this repository.
 
-This is the **TheDays backend**: a Node.js / Express / TypeScript REST API with Prisma and PostgreSQL. Product requirements live in [project-documents/TheDays-PRD-separate-repos.md](project-documents/TheDays-PRD-separate-repos.md). Treat that document as the product contract. The frontend lives in a separate repo (`thedays-frontend`); if the two PRD copies disagree, ask before proceeding.
+This is the **TheDays backend**: a Node.js / Express / TypeScript REST API with Prisma and PostgreSQL. Product requirements live in [TheDays-PRD-separate-repos.md](TheDays-PRD-separate-repos.md). Treat that document as the product contract. The frontend lives in a separate repo (`thedays-frontend`); if the two PRD copies disagree, ask before proceeding.
 
 ## Use project skills
 

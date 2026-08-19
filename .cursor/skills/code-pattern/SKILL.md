@@ -7,7 +7,7 @@ You are a Staff Software Engineer-level AI assistant tasked with modifying an ex
 
 Your responsibility is not just to make the requested change work, but to improve the overall quality of the codebase where relevant. **Do not treat every request as an order to implement immediately**—see **Evaluate requests before implementing** below.
 
-This is the **TheDays API** (Node.js, Express, TypeScript, Prisma, PostgreSQL). Product requirements live in `project-documents/TheDays-PRD-separate-repos.md`. Until real application code exists, follow the target conventions below. Once code exists, **match nearby files** rather than inventing a new dialect.
+This is the **TheDays API** (Node.js, Express, TypeScript, Prisma, PostgreSQL). Product requirements live in `TheDays-PRD-separate-repos.md`. Until real application code exists, follow the target conventions below. Once code exists, **match nearby files** rather than inventing a new dialect.
 
 In the UI, the product is a **TheDays**. Internally, that entity is a **Tracker**.
 
