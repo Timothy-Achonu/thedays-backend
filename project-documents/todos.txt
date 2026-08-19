@@ -15,16 +15,21 @@ Powershel switch to current dir: cd C:\Users\TIM\Desktop\code\current\thedays-fr
 
 
 
-//
-resume session: agent --resume=b813241d-0cbd-437c-8f52-a6f27efda5fd , read last response...
 
 
 
 //TODOS
-*Test that this codebase is working... you should be able to signin and see the user in the DB, test google auth, probably setup somethings on postgress and prisma or more. 
-*Create a plan to setup this frontend codebase (C:\Users\TIM\Desktop\code\current\thedays-frontend) taking inspiration from the PRD. Please make sure it's optimal. Copy patterns from "C:\Users\TIM\Desktop\code\current\homie-frontend"
 
+*test google auth: Let's implement Google authentication. Recommend a good way to implement it and tell me what I would do to get you to make it fully functional. Does the style in "C:\Users\TIM\Desktop\code\current\homie-frontend" work?
 
-*Implementing sending verification code to the user's email during register
 
 *Maybe expose an admin endpoint to fetch all users.
+
+
+*Create a plan to setup this frontend codebase (C:\Users\TIM\Desktop\code\current\thedays-frontend) taking inspiration from the PRD. Please make sure it's optimal. Copy patterns from "C:\Users\TIM\Desktop\code\current\homie-frontend" ✅
+
+*build frontend auth UI✅
+
+
+*Test that this codebase is working... you should be able to signin and see the user in the DB, probably setup somethings on postgress and prisma or more.  ✅
+
