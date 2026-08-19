@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 
 import {
   loginUser,
+  loginWithGoogle,
   registerUser,
   resendVerificationEmail,
   revokeSession,
@@ -10,6 +11,7 @@ import {
 import { getClearSessionCookieOptions, getSessionCookieOptions } from "../utils/auth-cookie.js";
 import { SESSION_COOKIE_NAME } from "../utils/session.js";
 import type {
+  GoogleAuthInput,
   LoginInput,
   RegisterInput,
   ResendVerificationInput,
@@ -40,6 +42,14 @@ export async function resendVerification(request: Request, response: Response): 
 
 export async function login(request: Request, response: Response): Promise<void> {
   const result = await loginUser(request.body as LoginInput);
+
+  response
+    .cookie(SESSION_COOKIE_NAME, result.sessionToken, getSessionCookieOptions(result.expiresAt))
+    .json({ user: result.user });
+}
+
+export async function googleLogin(request: Request, response: Response): Promise<void> {
+  const result = await loginWithGoogle(request.body as GoogleAuthInput);
 
   response
     .cookie(SESSION_COOKIE_NAME, result.sessionToken, getSessionCookieOptions(result.expiresAt))

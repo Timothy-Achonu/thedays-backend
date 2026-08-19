@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  googleAuthBodySchema,
   loginBodySchema,
   registerBodySchema,
   resendVerificationBodySchema,
@@ -160,6 +161,25 @@ describe("authentication request validation", () => {
 
   it("requires an email to resend verification", () => {
     const result = resendVerificationBodySchema.safeParse({});
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a Google ID token and defaults the timezone", () => {
+    const result = googleAuthBodySchema.parse({
+      idToken: "  google-id-token  ",
+    });
+
+    expect(result).toEqual({
+      idToken: "google-id-token",
+      timezone: "UTC",
+    });
+  });
+
+  it("rejects an empty Google ID token", () => {
+    const result = googleAuthBodySchema.safeParse({
+      idToken: "   ",
+    });
 
     expect(result.success).toBe(false);
   });

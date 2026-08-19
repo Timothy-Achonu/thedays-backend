@@ -10,6 +10,7 @@ export default defineConfig({
       SESSION_SECRET: "test-session-secret-that-is-at-least-32-characters",
       EMAIL_USER: "thedays-test@example.com",
       EMAIL_APP_PASSWORD: "test-gmail-app-password",
+      GOOGLE_CLIENT_ID: "test-google-client-id.apps.googleusercontent.com",
     },
     coverage: {
       provider: "v8",

@@ -19,6 +19,10 @@ const environmentSchema = z
       .string()
       .transform((value) => value.replaceAll(" ", ""))
       .pipe(z.string().min(16, { error: "EMAIL_APP_PASSWORD must be at least 16 characters" })),
+    GOOGLE_CLIENT_ID: z
+      .string()
+      .trim()
+      .min(1, { error: "GOOGLE_CLIENT_ID is required" }),
     SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
     COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax"),
     TRUST_PROXY: booleanStringSchema,

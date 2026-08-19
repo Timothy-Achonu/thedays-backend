@@ -11,7 +11,8 @@ model User {
   id                String             @id @default(cuid())
   username          String             @unique @db.VarChar(30)
   email             String             @unique @db.VarChar(320)
-  passwordHash      String
+  passwordHash      String?
+  googleSub         String?            @unique
   timezone          String             @default("UTC") @db.VarChar(100)
   emailVerifiedAt   DateTime?          @db.Timestamptz(3)
   createdAt         DateTime           @default(now()) @db.Timestamptz(3)

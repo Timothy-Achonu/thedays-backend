@@ -2,6 +2,8 @@ import { prisma } from "../db/prisma.js";
 import type { AuthenticatedUser } from "../types/auth.js";
 import { AppError } from "../utils/app-error.js";
 import { getRegistrationConflictField } from "../utils/get-registration-conflict-field.js";
+import type { GoogleIdentity } from "../utils/google-id-token.js";
+import { verifyGoogleIdToken } from "../utils/google-id-token.js";
 import {
   generateOtp,
   hashOtp,
@@ -13,7 +15,14 @@ import {
 } from "../utils/otp.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { createSessionExpiry, createSessionToken, hashSessionToken } from "../utils/session.js";
+import {
+  generateRandomUsername,
+  isValidUsername,
+  usernameBaseFromGoogleIdentity,
+  usernameCandidate,
+} from "../utils/username.js";
 import type {
+  GoogleAuthInput,
   LoginInput,
   RegisterInput,
   ResendVerificationInput,
@@ -65,6 +74,9 @@ function throwRegistrationConflictError(error: unknown): never {
   throw new AppError(409, "REGISTRATION_CONFLICT", "An account with these details already exists");
 }
 
+const USERNAME_ALLOCATION_ATTEMPTS = 25;
+const GOOGLE_LOGIN_UNIQUE_RETRIES = 3;
+
 function newSessionCredentials(): { sessionToken: string; tokenHash: string; expiresAt: Date } {
   const sessionToken = createSessionToken();
 
@@ -73,6 +85,46 @@ function newSessionCredentials(): { sessionToken: string; tokenHash: string; exp
     tokenHash: hashSessionToken(sessionToken),
     expiresAt: createSessionExpiry(),
   };
+}
+
+async function persistSession(
+  sessionDelegate: typeof prisma.session,
+  userId: string,
+  session: { tokenHash: string; expiresAt: Date },
+): Promise<void> {
+  await sessionDelegate.create({
+    data: {
+      userId,
+      tokenHash: session.tokenHash,
+      expiresAt: session.expiresAt,
+    },
+  });
+}
+
+async function allocateUniqueUsername(
+  transaction: { user: typeof prisma.user },
+  identity: GoogleIdentity,
+): Promise<string> {
+  const base = usernameBaseFromGoogleIdentity(identity);
+
+  for (let attempt = 0; attempt < USERNAME_ALLOCATION_ATTEMPTS; attempt += 1) {
+    const candidate = usernameCandidate(base, attempt);
+
+    if (!isValidUsername(candidate)) {
+      continue;
+    }
+
+    const occupant = await transaction.user.findUnique({
+      where: { username: candidate },
+      select: { id: true },
+    });
+
+    if (!occupant) {
+      return candidate;
+    }
+  }
+
+  return generateRandomUsername();
 }
 
 function toAuthenticatedUser(user: AuthenticatedUser): AuthenticatedUser {
@@ -277,13 +329,7 @@ export async function verifyUserEmail(input: VerifyEmailInput): Promise<Authenti
       select: publicUserSelect,
     });
 
-    await transaction.session.create({
-      data: {
-        userId: updatedUser.id,
-        tokenHash: session.tokenHash,
-        expiresAt: session.expiresAt,
-      },
-    });
+    await persistSession(transaction.session, updatedUser.id, session);
 
     return updatedUser;
   });
@@ -349,6 +395,15 @@ export async function loginUser(input: LoginInput): Promise<AuthenticationResult
   const userWithPassword = await prisma.user.findUnique({
     where: { email: input.email },
   });
+
+  if (userWithPassword && userWithPassword.passwordHash === null) {
+    throw new AppError(
+      401,
+      "USE_GOOGLE_SIGN_IN",
+      "This account uses Google sign-in. Continue with Google instead.",
+    );
+  }
+
   const passwordHash = userWithPassword?.passwordHash ?? (await getDummyPasswordHash());
   const passwordMatches = await verifyPassword(passwordHash, input.password);
 
@@ -361,13 +416,7 @@ export async function loginUser(input: LoginInput): Promise<AuthenticationResult
   }
 
   const session = newSessionCredentials();
-  await prisma.session.create({
-    data: {
-      userId: userWithPassword.id,
-      tokenHash: session.tokenHash,
-      expiresAt: session.expiresAt,
-    },
-  });
+  await persistSession(prisma.session, userWithPassword.id, session);
 
   return {
     user: toAuthenticatedUser({
@@ -381,6 +430,94 @@ export async function loginUser(input: LoginInput): Promise<AuthenticationResult
     sessionToken: session.sessionToken,
     expiresAt: session.expiresAt,
   };
+}
+
+async function persistGoogleAuthenticatedUser(
+  identity: GoogleIdentity,
+  timezone: string,
+  session: { tokenHash: string; expiresAt: Date },
+): Promise<AuthenticatedUser> {
+  return prisma.$transaction(async (transaction) => {
+    const existingByGoogleSub = await transaction.user.findUnique({
+      where: { googleSub: identity.googleSub },
+      select: publicUserSelect,
+    });
+
+    if (existingByGoogleSub) {
+      await persistSession(transaction.session, existingByGoogleSub.id, session);
+      return existingByGoogleSub;
+    }
+
+    const existingByEmail = await transaction.user.findUnique({
+      where: { email: identity.email },
+      select: {
+        ...publicUserSelect,
+        emailVerifiedAt: true,
+        emailVerification: { select: { id: true } },
+      },
+    });
+
+    if (existingByEmail) {
+      const updatedUser = await transaction.user.update({
+        where: { id: existingByEmail.id },
+        data: {
+          googleSub: identity.googleSub,
+          emailVerifiedAt: existingByEmail.emailVerifiedAt ?? new Date(),
+        },
+        select: publicUserSelect,
+      });
+
+      if (existingByEmail.emailVerification) {
+        await transaction.emailVerification.deleteMany({ where: { userId: existingByEmail.id } });
+      }
+
+      await persistSession(transaction.session, updatedUser.id, session);
+      return updatedUser;
+    }
+
+    const username = await allocateUniqueUsername(transaction, identity);
+    const createdUser = await transaction.user.create({
+      data: {
+        username,
+        email: identity.email,
+        passwordHash: null,
+        googleSub: identity.googleSub,
+        timezone,
+        emailVerifiedAt: new Date(),
+      },
+      select: publicUserSelect,
+    });
+
+    await persistSession(transaction.session, createdUser.id, session);
+    return createdUser;
+  });
+}
+
+export async function loginWithGoogle(input: GoogleAuthInput): Promise<AuthenticationResult> {
+  const identity = await verifyGoogleIdToken(input.idToken);
+  const session = newSessionCredentials();
+
+  for (let attempt = 0; attempt < GOOGLE_LOGIN_UNIQUE_RETRIES; attempt += 1) {
+    try {
+      const user = await persistGoogleAuthenticatedUser(identity, input.timezone, session);
+
+      return {
+        user: toAuthenticatedUser(user),
+        sessionToken: session.sessionToken,
+        expiresAt: session.expiresAt,
+      };
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+
+      if (!isUniqueConstraintError(error) || attempt === GOOGLE_LOGIN_UNIQUE_RETRIES - 1) {
+        throw error;
+      }
+    }
+  }
+
+  throw new AppError(500, "INTERNAL_SERVER_ERROR", "Google sign-in failed. Please try again.");
 }
 
 export async function findAuthenticatedSession(sessionToken: string): Promise<{

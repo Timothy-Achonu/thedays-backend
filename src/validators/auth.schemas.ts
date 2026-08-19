@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+import {
+  isReservedUsername,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MIN_LENGTH,
+  USERNAME_PATTERN,
+} from "../utils/username.js";
+
 function isSupportedTimeZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
@@ -24,17 +31,14 @@ const passwordSchema = z
   .min(8, { error: "Password must be at least 8 characters" })
   .max(128, { error: "Password must be at most 128 characters" });
 
-const RESERVED_USERNAMES = new Set([
-  "admin",
-  "api",
-  "help",
-  "me",
-  "null",
-  "support",
-  "system",
-  "thedays",
-  "undefined",
-]);
+const timezoneSchema = z
+  .string()
+  .trim()
+  .max(100, { error: "Timezone must be at most 100 characters" })
+  .refine(isSupportedTimeZone, {
+    error: "Must be a valid IANA timezone (for example, Africa/Lagos)",
+  })
+  .default("UTC");
 
 const usernameSchema = z
   .string({ error: "Username is required" })
@@ -43,13 +47,13 @@ const usernameSchema = z
   .pipe(
     z
       .string()
-      .min(3, { error: "Username must be at least 3 characters" })
-      .max(30, { error: "Username must be at most 30 characters" })
-      .regex(/^[a-z][a-z0-9_]*$/, {
+      .min(USERNAME_MIN_LENGTH, { error: "Username must be at least 3 characters" })
+      .max(USERNAME_MAX_LENGTH, { error: "Username must be at most 30 characters" })
+      .regex(USERNAME_PATTERN, {
         error:
           "Username must start with a letter and contain only lowercase letters, numbers, and underscores",
       })
-      .refine((value) => !RESERVED_USERNAMES.has(value), {
+      .refine((value) => !isReservedUsername(value), {
         error: "This username is reserved",
       }),
   );
@@ -59,14 +63,7 @@ export const registerBodySchema = z
     username: usernameSchema,
     email: emailSchema,
     password: passwordSchema,
-    timezone: z
-      .string()
-      .trim()
-      .max(100, { error: "Timezone must be at most 100 characters" })
-      .refine(isSupportedTimeZone, {
-        error: "Must be a valid IANA timezone (for example, Africa/Lagos)",
-      })
-      .default("UTC"),
+    timezone: timezoneSchema,
   })
   .strict();
 
@@ -95,7 +92,19 @@ export const resendVerificationBodySchema = z
   })
   .strict();
 
+export const googleAuthBodySchema = z
+  .object({
+    idToken: z
+      .string({ error: "Google ID token is required" })
+      .trim()
+      .min(1, { error: "Google ID token is required" })
+      .max(4096, { error: "Google ID token is too long" }),
+    timezone: timezoneSchema,
+  })
+  .strict();
+
 export type RegisterInput = z.infer<typeof registerBodySchema>;
 export type LoginInput = z.infer<typeof loginBodySchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailBodySchema>;
 export type ResendVerificationInput = z.infer<typeof resendVerificationBodySchema>;
+export type GoogleAuthInput = z.infer<typeof googleAuthBodySchema>;

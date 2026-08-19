@@ -4,7 +4,7 @@ import { AppError } from "../src/utils/app-error.js";
 import { hashOtp, OTP_MAX_ATTEMPTS } from "../src/utils/otp.js";
 import { hashPassword } from "../src/utils/password.js";
 
-const { prismaMock, sendVerificationOtp, EmailDeliveryError } = vi.hoisted(() => {
+const { prismaMock, sendVerificationOtp, EmailDeliveryError, verifyGoogleIdToken } = vi.hoisted(() => {
   class EmailDeliveryError extends Error {
     constructor() {
       super("Failed to send verification email");
@@ -15,6 +15,7 @@ const { prismaMock, sendVerificationOtp, EmailDeliveryError } = vi.hoisted(() =>
   return {
     EmailDeliveryError,
     sendVerificationOtp: vi.fn(),
+    verifyGoogleIdToken: vi.fn(),
     prismaMock: {
       $transaction: vi.fn(),
       user: {
@@ -44,8 +45,13 @@ vi.mock("../src/services/email.service.js", () => ({
   EmailDeliveryError,
 }));
 
+vi.mock("../src/utils/google-id-token.js", () => ({
+  verifyGoogleIdToken,
+}));
+
 import {
   loginUser,
+  loginWithGoogle,
   registerUser,
   resendVerificationEmail,
   verifyUserEmail,
@@ -294,3 +300,167 @@ describe("auth service email verification", () => {
     await expect(resendVerificationEmail({ email: "user@example.com" })).resolves.toBeUndefined();
   });
 });
+
+const googleIdentity = {
+  googleSub: "google-sub-1",
+  email: "user@example.com",
+  givenName: "Jane",
+  familyName: "Doe",
+};
+
+function publicUser(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "user_1",
+    username: "jane_doe",
+    email: "user@example.com",
+    timezone: "Africa/Lagos",
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function mockUserFindUnique(users: {
+  googleSub?: Record<string, unknown> | null;
+  email?: Record<string, unknown> | null;
+  username?: Record<string, unknown> | null;
+}) {
+  prismaMock.user.findUnique.mockImplementation(({ where }: { where: Record<string, unknown> }) => {
+    if ("googleSub" in where) {
+      return Promise.resolve(users.googleSub ?? null);
+    }
+
+    if ("email" in where) {
+      return Promise.resolve(users.email ?? null);
+    }
+
+    if ("username" in where) {
+      return Promise.resolve(users.username ?? null);
+    }
+
+    return Promise.resolve(null);
+  });
+}
+
+describe("auth service Google sign-in", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.$transaction.mockImplementation((callback: (tx: typeof prismaMock) => unknown) =>
+      Promise.resolve(callback(prismaMock)),
+    );
+    verifyGoogleIdToken.mockResolvedValue(googleIdentity);
+    prismaMock.session.create.mockResolvedValue({});
+  });
+
+  it("creates a Google-only user and issues a session", async () => {
+    mockUserFindUnique({});
+    prismaMock.user.create.mockResolvedValue(publicUser());
+
+    const result = await loginWithGoogle({
+      idToken: "google-id-token",
+      timezone: "Africa/Lagos",
+    });
+
+    expect(result.user.email).toBe("user@example.com");
+    expect(result.sessionToken).toEqual(expect.any(String));
+    expect(prismaMock.user.create.mock.calls[0]?.[0]).toMatchObject({
+      data: {
+        username: "jane_doe",
+        email: "user@example.com",
+        passwordHash: null,
+        googleSub: "google-sub-1",
+        timezone: "Africa/Lagos",
+      },
+    });
+    expect(prismaMock.session.create).toHaveBeenCalledOnce();
+  });
+
+  it("signs in an existing Google user", async () => {
+    mockUserFindUnique({ googleSub: publicUser() });
+
+    const result = await loginWithGoogle({
+      idToken: "google-id-token",
+      timezone: "UTC",
+    });
+
+    expect(result.user.id).toBe("user_1");
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(prismaMock.session.create).toHaveBeenCalledOnce();
+  });
+
+  it("links Google to an unverified email account and marks it verified", async () => {
+    mockUserFindUnique({
+      email: {
+        ...unverifiedUser(),
+        emailVerification: { id: "ev_1" },
+      },
+    });
+    prismaMock.user.update.mockResolvedValue(publicUser());
+    prismaMock.emailVerification.deleteMany.mockResolvedValue({ count: 1 });
+
+    const result = await loginWithGoogle({
+      idToken: "google-id-token",
+      timezone: "UTC",
+    });
+
+    expect(result.user.email).toBe("user@example.com");
+    expect(prismaMock.user.update.mock.calls[0]?.[0]).toMatchObject({
+      data: {
+        googleSub: "google-sub-1",
+      },
+    });
+    expect(prismaMock.emailVerification.deleteMany).toHaveBeenCalledWith({ where: { userId: "user_1" } });
+    expect(prismaMock.session.create).toHaveBeenCalledOnce();
+  });
+
+  it("links Google to a verified email-and-password account", async () => {
+    mockUserFindUnique({
+      email: {
+        ...publicUser(),
+        emailVerifiedAt: now,
+        emailVerification: null,
+      },
+    });
+    prismaMock.user.update.mockResolvedValue(publicUser());
+
+    await loginWithGoogle({
+      idToken: "google-id-token",
+      timezone: "UTC",
+    });
+
+    expect(prismaMock.user.update).toHaveBeenCalledOnce();
+    expect(prismaMock.emailVerification.deleteMany).not.toHaveBeenCalled();
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
+  });
+
+  it("propagates an invalid Google token without creating a session", async () => {
+    verifyGoogleIdToken.mockRejectedValue(new AppError(401, "INVALID_GOOGLE_TOKEN", "Google sign-in failed"));
+
+    const error = await loginWithGoogle({
+      idToken: "bad-token",
+      timezone: "UTC",
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ statusCode: 401, code: "INVALID_GOOGLE_TOKEN" });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.session.create).not.toHaveBeenCalled();
+  });
+
+  it("tells password login to use Google when the account has no password", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      ...publicUser(),
+      passwordHash: null,
+      emailVerifiedAt: now,
+    });
+
+    const error = await loginUser({
+      email: "user@example.com",
+      password: "password123",
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ statusCode: 401, code: "USE_GOOGLE_SIGN_IN" });
+    expect(prismaMock.session.create).not.toHaveBeenCalled();
+  });
+});
+
