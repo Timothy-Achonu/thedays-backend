@@ -26,6 +26,7 @@ import type {
   LoginInput,
   RegisterInput,
   ResendVerificationInput,
+  UpdateCurrentUserInput,
   VerifyEmailInput,
 } from "../validators/auth.schemas.js";
 import { EmailDeliveryError, sendVerificationOtp } from "./email.service.js";
@@ -417,6 +418,19 @@ export async function loginUser(input: LoginInput): Promise<AuthenticationResult
     sessionToken: session.sessionToken,
     expiresAt: session.expiresAt,
   };
+}
+
+export async function updateCurrentUser(
+  userId: string,
+  input: UpdateCurrentUserInput,
+): Promise<AuthenticatedUser> {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { timezone: input.timezone },
+    select: publicUserSelect,
+  });
+
+  return toAuthenticatedUser(user);
 }
 
 async function persistGoogleAuthenticatedUser(

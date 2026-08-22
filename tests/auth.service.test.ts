@@ -54,6 +54,7 @@ import {
   loginWithGoogle,
   registerUser,
   resendVerificationEmail,
+  updateCurrentUser,
   verifyUserEmail,
 } from "../src/services/auth.service.js";
 
@@ -218,6 +219,26 @@ describe("auth service email verification", () => {
 
     expect(error).toMatchObject({ statusCode: 403, code: "EMAIL_NOT_VERIFIED" });
     expect(prismaMock.session.create).not.toHaveBeenCalled();
+  });
+
+  it("signs in without changing the user's saved timezone", async () => {
+    const passwordHash = await hashPassword("password123");
+    prismaMock.user.findUnique.mockResolvedValue(
+      unverifiedUser({
+        passwordHash,
+        emailVerifiedAt: now,
+        timezone: "America/Toronto",
+      }),
+    );
+    prismaMock.session.create.mockResolvedValue({});
+
+    const result = await loginUser({
+      email: "user@example.com",
+      password: "password123",
+    });
+
+    expect(result.user.timezone).toBe("America/Toronto");
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
   it("issues a session when a valid OTP is submitted and refuses reuse", async () => {
@@ -504,5 +525,33 @@ describe("auth service Google sign-in", () => {
 
     expect(error).toMatchObject({ statusCode: 401, code: "USE_GOOGLE_SIGN_IN" });
     expect(prismaMock.session.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("auth service current-user settings", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("updates only the authenticated user's timezone and returns the public user", async () => {
+    const updatedUser = publicUser({ timezone: "America/Toronto" });
+    prismaMock.user.update.mockResolvedValue(updatedUser);
+
+    const result = await updateCurrentUser("user_1", { timezone: "America/Toronto" });
+
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: "user_1" },
+      data: { timezone: "America/Toronto" },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        timezone: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    expect(result).toEqual(updatedUser);
+    expect(result).not.toHaveProperty("passwordHash");
   });
 });

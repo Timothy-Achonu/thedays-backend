@@ -37,8 +37,9 @@ const timezoneSchema = z
   .max(100, { error: "Timezone must be at most 100 characters" })
   .refine(isSupportedTimeZone, {
     error: "Must be a valid IANA timezone (for example, Africa/Lagos)",
-  })
-  .default("UTC");
+  });
+
+const timezoneWithDefaultSchema = timezoneSchema.default("UTC");
 
 const usernameSchema = z
   .string({ error: "Username is required" })
@@ -63,7 +64,7 @@ export const registerBodySchema = z
     username: usernameSchema,
     email: emailSchema,
     password: passwordSchema,
-    timezone: timezoneSchema,
+    timezone: timezoneWithDefaultSchema,
   })
   .strict();
 
@@ -99,6 +100,12 @@ export const googleAuthBodySchema = z
       .trim()
       .min(1, { error: "Google ID token is required" })
       .max(4096, { error: "Google ID token is too long" }),
+    timezone: timezoneWithDefaultSchema,
+  })
+  .strict();
+
+export const updateCurrentUserBodySchema = z
+  .object({
     timezone: timezoneSchema,
   })
   .strict();
@@ -108,3 +115,4 @@ export type LoginInput = z.infer<typeof loginBodySchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailBodySchema>;
 export type ResendVerificationInput = z.infer<typeof resendVerificationBodySchema>;
 export type GoogleAuthInput = z.infer<typeof googleAuthBodySchema>;
+export type UpdateCurrentUserInput = z.infer<typeof updateCurrentUserBodySchema>;

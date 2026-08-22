@@ -1307,7 +1307,11 @@ The browser timezone may initially be detected using:
 Intl.DateTimeFormat().resolvedOptions().timeZone
 ```
 
-The application should eventually allow users to update their timezone through account settings.
+Registration should preselect the detected browser timezone, falling back to `UTC`, and let the user choose a different valid IANA timezone before creating the account. Login should not change the saved timezone.
+
+Users can update their timezone through account settings. The change applies immediately to future current-day calculations and must not rewrite existing date-only tracker or completion history. If the new timezone changes the user's current calendar date, the frontend should ask for confirmation before saving.
+
+When the saved timezone differs from a successfully detected browser timezone, the dashboard may show a dismissible prompt linking to settings. It must not overwrite the account setting automatically.
 
 ---
 
@@ -1325,7 +1329,8 @@ Example body:
 {
   "username": "example_user",
   "email": "user@example.com",
-  "password": "..."
+  "password": "...",
+  "timezone": "Africa/Lagos"
 }
 ```
 
@@ -1345,6 +1350,18 @@ POST /api/auth/logout
 
 ```http
 GET /api/auth/me
+```
+
+## Update Current User
+
+```http
+PATCH /api/auth/me
+```
+
+```json
+{
+  "timezone": "Africa/Lagos"
+}
 ```
 
 ---

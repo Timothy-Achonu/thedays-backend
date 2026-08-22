@@ -6,6 +6,7 @@ import {
   registerUser,
   resendVerificationEmail,
   revokeSession,
+  updateCurrentUser,
   verifyUserEmail,
 } from "../services/auth.service.js";
 import { getClearSessionCookieOptions, getSessionCookieOptions } from "../utils/auth-cookie.js";
@@ -15,6 +16,7 @@ import type {
   LoginInput,
   RegisterInput,
   ResendVerificationInput,
+  UpdateCurrentUserInput,
   VerifyEmailInput,
 } from "../validators/auth.schemas.js";
 
@@ -68,4 +70,13 @@ export async function logout(request: Request, response: Response): Promise<void
 
 export function me(request: Request, response: Response): void {
   response.json({ user: request.auth!.user });
+}
+
+export async function updateMe(request: Request, response: Response): Promise<void> {
+  const user = await updateCurrentUser(
+    request.auth!.user.id,
+    request.body as UpdateCurrentUserInput,
+  );
+
+  response.json({ user });
 }

@@ -1,7 +1,16 @@
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 
-import { googleLogin, login, logout, me, register, resendVerification, verifyEmail } from "../controllers/auth.controller.js";
+import {
+  googleLogin,
+  login,
+  logout,
+  me,
+  register,
+  resendVerification,
+  updateMe,
+  verifyEmail,
+} from "../controllers/auth.controller.js";
 import { requireAuthentication } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
 import {
@@ -9,6 +18,7 @@ import {
   loginBodySchema,
   registerBodySchema,
   resendVerificationBodySchema,
+  updateCurrentUserBodySchema,
   verifyEmailBodySchema,
 } from "../validators/auth.schemas.js";
 
@@ -39,3 +49,9 @@ authRouter.post("/login", authRateLimiter, validate({ body: loginBodySchema }), 
 authRouter.post("/google", authRateLimiter, validate({ body: googleAuthBodySchema }), googleLogin);
 authRouter.post("/logout", logout);
 authRouter.get("/me", requireAuthentication, me);
+authRouter.patch(
+  "/me",
+  requireAuthentication,
+  validate({ body: updateCurrentUserBodySchema }),
+  updateMe,
+);

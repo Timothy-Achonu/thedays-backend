@@ -5,6 +5,7 @@ import {
   loginBodySchema,
   registerBodySchema,
   resendVerificationBodySchema,
+  updateCurrentUserBodySchema,
   verifyEmailBodySchema,
 } from "../src/validators/auth.schemas.js";
 
@@ -138,6 +139,16 @@ describe("authentication request validation", () => {
     expect(longPassword.error.issues[0]?.message).toBe("Password must be at most 128 characters");
   });
 
+  it("does not accept timezone as part of password login", () => {
+    const result = loginBodySchema.safeParse({
+      email: "user@example.com",
+      password: "password123",
+      timezone: "Africa/Lagos",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("accepts a 6-digit verification code and normalizes the email", () => {
     const result = verifyEmailBodySchema.parse({
       email: "  USER@Example.COM ",
@@ -182,5 +193,17 @@ describe("authentication request validation", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("requires one valid timezone when updating the current user", () => {
+    expect(
+      updateCurrentUserBodySchema.parse({ timezone: "  Africa/Lagos  " }),
+    ).toEqual({ timezone: "Africa/Lagos" });
+
+    expect(updateCurrentUserBodySchema.safeParse({}).success).toBe(false);
+    expect(updateCurrentUserBodySchema.safeParse({ timezone: "Lagos" }).success).toBe(false);
+    expect(
+      updateCurrentUserBodySchema.safeParse({ timezone: "UTC", username: "someone_else" }).success,
+    ).toBe(false);
   });
 });
