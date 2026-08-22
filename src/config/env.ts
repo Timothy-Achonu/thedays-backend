@@ -12,13 +12,12 @@ const environmentSchema = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     DATABASE_URL: z.string().min(1),
+    DIRECT_DATABASE_URL: z.string().min(1),
     FRONTEND_URL: z.url().transform((value) => new URL(value).origin),
     SESSION_SECRET: z.string().min(32),
-    EMAIL_USER: z.email(),
-    EMAIL_APP_PASSWORD: z
-      .string()
-      .transform((value) => value.replaceAll(" ", ""))
-      .pipe(z.string().min(16, { error: "EMAIL_APP_PASSWORD must be at least 16 characters" })),
+    BREVO_API_KEY: z.string().trim().min(1, { error: "BREVO_API_KEY is required" }),
+    EMAIL_FROM_ADDRESS: z.email(),
+    EMAIL_FROM_NAME: z.string().trim().min(1).max(70),
     GOOGLE_CLIENT_ID: z
       .string()
       .trim()

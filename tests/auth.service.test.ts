@@ -103,7 +103,7 @@ describe("auth service email verification", () => {
     expect(sendVerificationOtp.mock.calls[0]?.[1]).toMatch(/^\d{6}$/);
   });
 
-  it("returns 503 without a session when Gmail sending fails after the user is created", async () => {
+  it("returns 503 without a session when Brevo sending fails after the user is created", async () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
     prismaMock.user.create.mockResolvedValue({ id: "user_1", email: "user@example.com" });
     prismaMock.emailVerification.upsert.mockResolvedValue({});
@@ -281,9 +281,13 @@ describe("auth service email verification", () => {
     expect(prismaMock.emailVerification.deleteMany).toHaveBeenCalledWith({ where: { id: "ev_1" } });
   });
 
-  it("does not reveal whether an email exists when resending, including cooldown and send failure", async () => {
+  it("does not reveal whether an email exists for nonexistent, verified, or cooldown resends", async () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
     await expect(resendVerificationEmail({ email: "missing@example.com" })).resolves.toBeUndefined();
+    expect(sendVerificationOtp).not.toHaveBeenCalled();
+
+    prismaMock.user.findUnique.mockResolvedValue(unverifiedUser({ emailVerifiedAt: now }));
+    await expect(resendVerificationEmail({ email: "verified@example.com" })).resolves.toBeUndefined();
     expect(sendVerificationOtp).not.toHaveBeenCalled();
 
     prismaMock.user.findUnique.mockResolvedValue(
@@ -293,11 +297,50 @@ describe("auth service email verification", () => {
     );
     await expect(resendVerificationEmail({ email: "user@example.com" })).resolves.toBeUndefined();
     expect(sendVerificationOtp).not.toHaveBeenCalled();
+  });
 
-    prismaMock.user.findUnique.mockResolvedValue(unverifiedUser());
+  it("returns 503 and leaves lastSentAt unset when an eligible resend fails", async () => {
+    prismaMock.user.findUnique.mockResolvedValue(
+      unverifiedUser({
+        emailVerification: {
+          lastSentAt: new Date(now.getTime() - 61_000),
+          id: "ev_1",
+          codeHash: "x",
+          expiresAt: now,
+          attemptCount: 0,
+        },
+      }),
+    );
     prismaMock.emailVerification.upsert.mockResolvedValue({});
     sendVerificationOtp.mockRejectedValue(new EmailDeliveryError());
-    await expect(resendVerificationEmail({ email: "user@example.com" })).resolves.toBeUndefined();
+
+    const error = await resendVerificationEmail({ email: "user@example.com" }).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({ statusCode: 503, code: "EMAIL_DELIVERY_FAILED" });
+    expect(prismaMock.emailVerification.upsert.mock.calls[0]?.[0]).toMatchObject({
+      update: { lastSentAt: null },
+    });
+    expect(prismaMock.emailVerification.update).not.toHaveBeenCalled();
+  });
+
+  it("sets lastSentAt only after Brevo accepts an eligible resend", async () => {
+    const acceptedAt = new Date("2026-08-21T12:00:00.000Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(acceptedAt);
+    prismaMock.user.findUnique.mockResolvedValue(unverifiedUser());
+    prismaMock.emailVerification.upsert.mockResolvedValue({});
+    prismaMock.emailVerification.update.mockResolvedValue({});
+
+    await resendVerificationEmail({ email: "user@example.com" });
+
+    expect(sendVerificationOtp).toHaveBeenCalledOnce();
+    expect(prismaMock.emailVerification.update).toHaveBeenCalledWith({
+      where: { userId: "user_1" },
+      data: { lastSentAt: acceptedAt },
+    });
+    vi.useRealTimers();
   });
 });
 
@@ -463,4 +506,3 @@ describe("auth service Google sign-in", () => {
     expect(prismaMock.session.create).not.toHaveBeenCalled();
   });
 });
-

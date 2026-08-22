@@ -375,20 +375,7 @@ export async function resendVerificationEmail(input: ResendVerificationInput): P
     },
   });
 
-  try {
-    await sendVerificationOtp(input.email, otp);
-  } catch (error) {
-    if (error instanceof EmailDeliveryError) {
-      return;
-    }
-
-    throw error;
-  }
-
-  await prisma.emailVerification.update({
-    where: { userId: user.id },
-    data: { lastSentAt: new Date() },
-  });
+  await sendOtpOrThrow(input.email, otp, user.id);
 }
 
 export async function loginUser(input: LoginInput): Promise<AuthenticationResult> {
